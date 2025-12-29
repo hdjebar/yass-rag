@@ -5,6 +5,8 @@ Google Drive Sync Tools.
 import json
 import tempfile
 
+from ..concurrency import upload_slot
+from ..logging import get_logger
 from ..models.api import ListDriveFilesInput, ResponseFormat, SyncDriveFolderInput
 from ..server import mcp
 from ..services.drive import (
@@ -17,6 +19,8 @@ from ..services.drive import (
 )
 from ..services.gemini import _get_gemini_client, _wait_for_operation
 from ..utils import _handle_error
+
+logger = get_logger("drive_sync")
 
 
 @mcp.tool(
@@ -79,6 +83,7 @@ Setup options:
     try:
         # Parse folder ID from URL or use as-is
         folder_id = _parse_drive_folder_id(params.folder)
+        logger.info(f"Starting sync from Drive folder: {folder_id}")
 
         # Get Drive service
         service = _get_drive_service(params.credentials_path)
@@ -87,18 +92,22 @@ Setup options:
         # Parse extensions
         extensions = None
         if params.file_extensions:
-            extensions = {ext if ext.startswith('.') else f'.{ext}' for ext in params.file_extensions}
+            extensions = {
+                ext if ext.startswith(".") else f".{ext}" for ext in params.file_extensions
+            }
 
         # List files in Drive folder
+        logger.debug(f"Listing files (recursive={params.recursive}, max={params.max_files})")
         files = _list_drive_files(
             service,
             folder_id,
             recursive=params.recursive,
             max_files=params.max_files,
-            extensions=extensions
+            extensions=extensions,
         )
 
         if not files:
+            logger.info("No supported files found in folder")
             return f"""## Sync Complete
 
 No supported files found in folder `{folder_id}`.
@@ -106,13 +115,15 @@ No supported files found in folder `{folder_id}`.
 Supported extensions: {', '.join(sorted(SUPPORTED_EXTENSIONS))}
 """
 
+        logger.info(f"Found {len(files)} files to sync")
+
         # Create temp directory for downloads
         uploaded = []
         failed = []
 
         with tempfile.TemporaryDirectory() as temp_dir:
             for file_info in files:
-                file_name = file_info['name']
+                file_name = file_info["name"]
 
                 # Download file
                 local_path = _download_drive_file(service, file_info, temp_dir)
@@ -120,24 +131,32 @@ Supported extensions: {', '.join(sorted(SUPPORTED_EXTENSIONS))}
                     failed.append({"name": file_name, "error": "Download failed"})
                     continue
 
-                # Upload to Gemini
+                # Upload to Gemini with concurrency control
                 try:
-                    operation = gemini_client.file_search_stores.upload_to_file_search_store(
-                        file=local_path,
-                        file_search_store_name=params.store_name,
-                        config={'display_name': file_name}
-                    )
+                    async with upload_slot():
+                        logger.debug(f"Uploading {file_name} to Gemini")
+                        operation = gemini_client.file_search_stores.upload_to_file_search_store(
+                            file=local_path,
+                            file_search_store_name=params.store_name,
+                            config={"display_name": file_name},
+                        )
 
-                    # Wait for upload
-                    operation = await _wait_for_operation(gemini_client, operation, max_attempts=30)
+                        # Wait for upload
+                        operation = await _wait_for_operation(
+                            gemini_client, operation, max_attempts=30
+                        )
 
                     uploaded.append({
                         "name": file_name,
-                        "drive_id": file_info['id'],
-                        "status": "indexed" if operation.done else "processing"
+                        "drive_id": file_info["id"],
+                        "status": "indexed" if operation.done else "processing",
                     })
+                    logger.debug(f"Uploaded {file_name} successfully")
                 except Exception as e:
+                    logger.warning(f"Failed to upload {file_name}: {e}")
                     failed.append({"name": file_name, "error": str(e)})
+
+        logger.info(f"Sync complete: {len(uploaded)} uploaded, {len(failed)} failed")
 
         if params.response_format == ResponseFormat.JSON:
             return json.dumps({

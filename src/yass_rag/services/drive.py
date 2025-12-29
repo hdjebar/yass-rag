@@ -8,6 +8,11 @@ import re
 from pathlib import Path
 from typing import Any
 
+from ..config import DRIVE_SCOPES, GOOGLE_DOCS_EXPORT_MIMES, SUPPORTED_EXTENSIONS
+from ..logging import get_logger
+
+logger = get_logger("drive")
+
 # Google Drive API (optional - for sync features)
 try:
     from google.auth.transport.requests import Request
@@ -16,11 +21,11 @@ try:
     from google_auth_oauthlib.flow import InstalledAppFlow
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaIoBaseDownload
+
     DRIVE_API_AVAILABLE = True
 except ImportError:
     DRIVE_API_AVAILABLE = False
-
-from ..config import DRIVE_SCOPES, GOOGLE_DOCS_EXPORT_MIMES, SUPPORTED_EXTENSIONS
+    logger.debug("Google Drive API not available (optional packages not installed)")
 
 
 def _parse_drive_folder_id(folder_input: str) -> str:
@@ -60,7 +65,7 @@ def _parse_drive_folder_id(folder_input: str) -> str:
     return folder_input
 
 
-def _get_drive_credentials(credentials_path: str | None = None):
+def _get_drive_credentials(credentials_path: str | None = None) -> Any:
     """Get Google Drive API credentials."""
     if not DRIVE_API_AVAILABLE:
         raise ImportError(
@@ -71,40 +76,47 @@ def _get_drive_credentials(credentials_path: str | None = None):
     creds = None
 
     # Try credentials path first
-    cred_file = credentials_path or os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
-    oauth_file = credentials_path or os.environ.get('GOOGLE_OAUTH_CREDENTIALS')
-    token_file = Path.home() / '.gemini_mcp_token.json'
+    cred_file = credentials_path or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    oauth_file = credentials_path or os.environ.get("GOOGLE_OAUTH_CREDENTIALS")
+    token_file = Path.home() / ".gemini_mcp_token.json"
 
     # Check for existing token
     if token_file.exists():
+        logger.debug(f"Loading cached credentials from {token_file}")
         creds = Credentials.from_authorized_user_file(str(token_file), DRIVE_SCOPES)
 
     # Refresh or get new credentials
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
+            logger.debug("Refreshing expired credentials")
             creds.refresh(Request())
         elif cred_file and os.path.exists(cred_file):
             # Try service account first
             try:
+                logger.debug(f"Trying service account credentials from {cred_file}")
                 creds = service_account.Credentials.from_service_account_file(
                     cred_file, scopes=DRIVE_SCOPES
                 )
             except Exception:
                 # Fall back to OAuth flow
+                logger.debug("Service account failed, falling back to OAuth flow")
                 flow = InstalledAppFlow.from_client_secrets_file(cred_file, DRIVE_SCOPES)
                 creds = flow.run_local_server(port=0)
         elif oauth_file and os.path.exists(oauth_file):
+            logger.debug(f"Starting OAuth flow with {oauth_file}")
             flow = InstalledAppFlow.from_client_secrets_file(oauth_file, DRIVE_SCOPES)
             creds = flow.run_local_server(port=0)
         else:
+            logger.error("No Google credentials found")
             raise ValueError(
                 "No Google credentials found. Set GOOGLE_APPLICATION_CREDENTIALS or "
                 "GOOGLE_OAUTH_CREDENTIALS environment variable, or provide credentials_path."
             )
 
         # Save token for future use with secure permissions
-        if hasattr(creds, 'refresh_token') and creds.refresh_token:
-            with open(token_file, 'w') as f:
+        if hasattr(creds, "refresh_token") and creds.refresh_token:
+            logger.debug(f"Saving credentials to {token_file}")
+            with open(token_file, "w") as f:
                 f.write(creds.to_json())
             # Restrict file permissions to owner only (security)
             os.chmod(token_file, 0o600)
@@ -172,31 +184,34 @@ def _list_drive_files(
     return files[:max_files]
 
 
-def _download_drive_file(service, file_info: dict[str, Any], temp_dir: str) -> str | None:
+def _download_drive_file(service: Any, file_info: dict[str, Any], temp_dir: str) -> str | None:
     """Download a file from Google Drive to a temp directory."""
-    file_id = file_info['id']
-    file_name = file_info['name']
-    mime_type = file_info.get('mimeType', '')
+    file_id = file_info["id"]
+    file_name = file_info["name"]
+    mime_type = file_info.get("mimeType", "")
 
     try:
         # Handle Google Docs (need to export)
         if mime_type in GOOGLE_DOCS_EXPORT_MIMES:
             export_mime, ext = GOOGLE_DOCS_EXPORT_MIMES[mime_type]
+            logger.debug(f"Exporting {file_name} as {export_mime}")
             request = service.files().export_media(fileId=file_id, mimeType=export_mime)
             file_name = os.path.splitext(file_name)[0] + ext
         else:
+            logger.debug(f"Downloading {file_name}")
             request = service.files().get_media(fileId=file_id)
 
         file_path = os.path.join(temp_dir, file_name)
 
-        with io.FileIO(file_path, 'wb') as fh:
+        with io.FileIO(file_path, "wb") as fh:
             downloader = MediaIoBaseDownload(fh, request)
             done = False
             while not done:
                 _, done = downloader.next_chunk()
 
+        logger.debug(f"Downloaded {file_name} to {file_path}")
         return file_path
 
     except Exception as e:
-        print(f"Warning: Failed to download {file_name}: {e}")
+        logger.warning(f"Failed to download {file_name}: {e}")
         return None
