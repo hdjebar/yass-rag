@@ -97,8 +97,8 @@ export GOOGLE_OAUTH_CREDENTIALS='/path/to/oauth-credentials.json'
 # Using uv
 uv run yass-rag
 
-# Or directly
-uv run python yass_rag.py
+# Or with python module
+uv run python -m yass_rag.main
 
 # Or if installed globally
 yass-rag
@@ -275,6 +275,18 @@ uv run ruff format .
 
 # Test with MCP Inspector
 npx @modelcontextprotocol/inspector uv run yass-rag
+```
+
+### Project Structure
+```
+yass-rag/
+├── src/yass_rag/       # Main package
+│   ├── tools/          # MCP tool definitions
+│   ├── services/       # External API services (Gemini, Drive)
+│   ├── models/         # Pydantic data models
+│   ├── config.py       # Configuration management
+│   └── server.py       # FastMCP server instance
+└── tests/              # Unit and integration tests
 ```
 
 ## Resources
