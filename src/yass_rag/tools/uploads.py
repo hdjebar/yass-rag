@@ -6,10 +6,11 @@ import json
 import os
 import tempfile
 
+from ..config import rag_config
 from ..models.api import ResponseFormat, UploadFileInput, UploadTextInput
 from ..server import mcp
 from ..services.gemini import _get_gemini_client, _wait_for_operation
-from ..utils import _handle_error
+from ..utils import _handle_error, _validate_file_path
 
 
 @mcp.tool(
@@ -27,13 +28,16 @@ async def upload_file(params: UploadFileInput) -> str:
     try:
         client = _get_gemini_client()
 
-        if not os.path.exists(params.file_path):
-            return f"Error: File not found: {params.file_path}"
+        # Validate file path (security + size check)
+        validated_path = _validate_file_path(
+            params.file_path,
+            max_size_mb=rag_config.max_file_size_mb
+        )
 
         config = {'display_name': params.display_name} if params.display_name else None
 
         operation = client.file_search_stores.upload_to_file_search_store(
-            file=params.file_path,
+            file=str(validated_path),
             file_search_store_name=params.store_name,
             config=config
         )
@@ -41,7 +45,7 @@ async def upload_file(params: UploadFileInput) -> str:
         if params.wait_for_completion:
             operation = await _wait_for_operation(client, operation)
 
-        file_name = os.path.basename(params.file_path)
+        file_name = validated_path.name
         display = params.display_name or file_name
         status = "✅ Completed" if operation.done else "⏳ In Progress"
 

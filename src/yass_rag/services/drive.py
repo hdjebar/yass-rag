@@ -77,7 +77,7 @@ def _get_drive_credentials(credentials_path: str | None = None):
 
     # Check for existing token
     if token_file.exists():
-        creds = Credentials.from_authorized_user_file(str(token_file), DRIVER_SCOPES)
+        creds = Credentials.from_authorized_user_file(str(token_file), DRIVE_SCOPES)
 
     # Refresh or get new credentials
     if not creds or not creds.valid:
@@ -87,14 +87,14 @@ def _get_drive_credentials(credentials_path: str | None = None):
             # Try service account first
             try:
                 creds = service_account.Credentials.from_service_account_file(
-                    cred_file, scopes=DRIVER_SCOPES
+                    cred_file, scopes=DRIVE_SCOPES
                 )
             except Exception:
                 # Fall back to OAuth flow
-                flow = InstalledAppFlow.from_client_secrets_file(cred_file, DRIVER_SCOPES)
+                flow = InstalledAppFlow.from_client_secrets_file(cred_file, DRIVE_SCOPES)
                 creds = flow.run_local_server(port=0)
         elif oauth_file and os.path.exists(oauth_file):
-            flow = InstalledAppFlow.from_client_secrets_file(oauth_file, DRIVER_SCOPES)
+            flow = InstalledAppFlow.from_client_secrets_file(oauth_file, DRIVE_SCOPES)
             creds = flow.run_local_server(port=0)
         else:
             raise ValueError(
@@ -102,10 +102,12 @@ def _get_drive_credentials(credentials_path: str | None = None):
                 "GOOGLE_OAUTH_CREDENTIALS environment variable, or provide credentials_path."
             )
 
-        # Save token for future use
+        # Save token for future use with secure permissions
         if hasattr(creds, 'refresh_token') and creds.refresh_token:
             with open(token_file, 'w') as f:
                 f.write(creds.to_json())
+            # Restrict file permissions to owner only (security)
+            os.chmod(token_file, 0o600)
 
     return creds
 

@@ -2,7 +2,7 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-DEFAULT_MODEL = "gemini-2.5-flash"
+from ..config import DEFAULT_MODEL
 
 
 class ResponseFormat(str, Enum):
