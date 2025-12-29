@@ -7,12 +7,13 @@ import os
 import sys
 from pathlib import Path
 
+from . import prompts, resources
 from .config import rag_config
 from .logging import get_logger
 from .server import mcp
 from .services.drive import DRIVE_API_AVAILABLE
 
-# Import tools to ensure they are registered with the server
+# Import tools, resources, and prompts to ensure they are registered with the server
 # ruff: noqa: F401
 from .tools import config, drive, search, store, uploads
 
