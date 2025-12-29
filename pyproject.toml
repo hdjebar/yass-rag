@@ -6,7 +6,7 @@ readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
 authors = [
-    { name = "Your Name", email = "you@example.com" }
+    { name = "YASS-RAG Contributors" }
 ]
 keywords = ["mcp", "gemini", "rag", "file-search", "google-drive", "ai", "llm"]
 classifiers = [
@@ -25,6 +25,7 @@ dependencies = [
     "google-genai>=1.0.0",
     "pydantic>=2.0.0",
     "python-dotenv>=1.0.0",
+    "tenacity>=8.0.0",
 ]
 
 [project.optional-dependencies]
@@ -47,10 +48,10 @@ all = [
 yass-rag = "yass_rag.main:main"
 
 [project.urls]
-Homepage = "https://github.com/yourusername/yass-rag"
-Documentation = "https://github.com/yourusername/yass-rag#readme"
-Repository = "https://github.com/yourusername/yass-rag"
-Issues = "https://github.com/yourusername/yass-rag/issues"
+Homepage = "https://github.com/hdjebar/yass-rag"
+Documentation = "https://github.com/hdjebar/yass-rag#readme"
+Repository = "https://github.com/hdjebar/yass-rag"
+Issues = "https://github.com/hdjebar/yass-rag/issues"
 
 [build-system]
 requires = ["hatchling"]

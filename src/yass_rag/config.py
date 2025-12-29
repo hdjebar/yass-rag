@@ -2,13 +2,18 @@
 """
 Configuration management for YASS-RAG.
 """
+import json
 import os
+from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 
 # Load environment variables from .env file if present
 load_dotenv()
+
+# Default config file location
+DEFAULT_CONFIG_PATH = Path.home() / ".yass_rag_config.json"
 
 # Supported file types for indexing
 SUPPORTED_EXTENSIONS = {
@@ -165,8 +170,113 @@ class RAGConfig:
         """Get the effective Gemini API key."""
         key = self.gemini_api_key or os.environ.get("GEMINI_API_KEY")
         if not key:
-            raise ValueError("GEMINI_API_KEY not configured. Use configure_rag or set environment variable.")
+            raise ValueError(
+                "GEMINI_API_KEY not configured. Use configure_rag or set environment variable."
+            )
         return key
+
+    def save(self, path: Path | None = None, include_secrets: bool = False) -> Path:
+        """Save configuration to a JSON file.
+
+        Args:
+            path: Path to save config file. Defaults to ~/.yass_rag_config.json
+            include_secrets: If True, includes API keys in saved config (use with caution)
+
+        Returns:
+            Path to the saved config file
+        """
+        config_path = path or DEFAULT_CONFIG_PATH
+
+        # Build config dict for saving
+        config_data = {
+            # Model
+            "model": self.model,
+            "temperature": self.temperature,
+            "max_output_tokens": self.max_output_tokens,
+            "top_p": self.top_p,
+            "top_k": self.top_k,
+            # Polling & Async
+            "poll_interval_seconds": self.poll_interval_seconds,
+            "max_poll_attempts": self.max_poll_attempts,
+            "async_uploads": self.async_uploads,
+            "batch_size": self.batch_size,
+            "concurrent_uploads": self.concurrent_uploads,
+            # Drive
+            "default_drive_folder": self.default_drive_folder,
+            "drive_recursive": self.drive_recursive,
+            "drive_max_files": self.drive_max_files,
+            "drive_file_extensions": self.drive_file_extensions,
+            "auto_sync_enabled": self.auto_sync_enabled,
+            "sync_interval_minutes": self.sync_interval_minutes,
+            # Project/Store
+            "project_store": self.project_store,
+            "default_stores": self.default_stores,
+            "auto_create_store": self.auto_create_store,
+            # Retrieval
+            "max_chunks": self.max_chunks,
+            "min_relevance_score": self.min_relevance_score,
+            "include_metadata": self.include_metadata,
+            "chunk_overlap_context": self.chunk_overlap_context,
+            # Response
+            "include_citations": self.include_citations,
+            "citation_style": self.citation_style,
+            "response_format": self.response_format,
+            "system_prompt": self.system_prompt,
+            # Files
+            "supported_extensions": list(self.supported_extensions),
+            "max_file_size_mb": self.max_file_size_mb,
+            "skip_hidden_files": self.skip_hidden_files,
+        }
+
+        # Optionally include secrets (API keys, credential paths)
+        if include_secrets:
+            config_data["gemini_api_key"] = self.gemini_api_key
+            config_data["google_credentials_path"] = self.google_credentials_path
+            config_data["google_oauth_path"] = self.google_oauth_path
+
+        with open(config_path, "w") as f:
+            json.dump(config_data, f, indent=2)
+
+        # Set secure permissions (owner read/write only)
+        os.chmod(config_path, 0o600)
+
+        return config_path
+
+    def load(self, path: Path | None = None) -> bool:
+        """Load configuration from a JSON file.
+
+        Args:
+            path: Path to config file. Defaults to ~/.yass_rag_config.json
+
+        Returns:
+            True if config was loaded successfully, False if file doesn't exist
+        """
+        config_path = path or DEFAULT_CONFIG_PATH
+
+        if not config_path.exists():
+            return False
+
+        try:
+            with open(config_path) as f:
+                config_data = json.load(f)
+            self.from_dict(config_data)
+            return True
+        except (json.JSONDecodeError, OSError):
+            return False
+
+    @classmethod
+    def load_or_create(cls, path: Path | None = None) -> "RAGConfig":
+        """Load config from file or create with defaults.
+
+        Args:
+            path: Path to config file. Defaults to ~/.yass_rag_config.json
+
+        Returns:
+            RAGConfig instance (loaded from file or with defaults)
+        """
+        config = cls()
+        config.load(path)
+        return config
 
 
 # Global RAG configuration instance

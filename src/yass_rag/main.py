@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from .config import rag_config
+from .logging import get_logger
 from .server import mcp
 from .services.drive import DRIVE_API_AVAILABLE
 
@@ -15,8 +16,10 @@ from .services.drive import DRIVE_API_AVAILABLE
 # ruff: noqa: F401
 from .tools import config, drive, search, store, uploads
 
+logger = get_logger("main")
 
-def config_command(args):
+
+def config_command(args: argparse.Namespace) -> None:
     """Handle configuration command."""
     env_path = Path(".env")
 
@@ -36,6 +39,7 @@ def config_command(args):
         with open(env_path, "w") as f:
             f.writelines(lines)
 
+        logger.info(f"Gemini API key configured in {env_path.absolute()}")
         print(f"✅ Gemini API key configured in {env_path.absolute()}")
         return
 
@@ -52,7 +56,7 @@ def config_command(args):
     print("Use --key <YOUR_KEY> to set the Gemini API key.")
 
 
-def main():
+def main() -> None:
     """Main entry point for the MCP server."""
     parser = argparse.ArgumentParser(description="YASS-RAG: Yet Another Simple & Smart RAG")
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
@@ -65,12 +69,6 @@ def main():
     cfg_parser.add_argument("--key", help="Set the Gemini API Key")
     cfg_parser.add_argument("--show", action="store_true", help="Show current configuration")
 
-    # If no arguments, mimic FastMCP behavior (which normally takes over sys.argv)
-    # But since we want to support 'yass-rag run' vs 'yass-rag', we need to be careful.
-    # FastMCP uses click/typer internally or looks at sys.argv?
-    # Actually mcp.run() usually blocks and handles stdin/stdout.
-    # If we invoke it with 'yass-rag', we want to default to run.
-
     # Check if a subcommand was provided
     if len(sys.argv) > 1 and sys.argv[1] in ["config", "run"]:
         args = parser.parse_args()
@@ -80,23 +78,20 @@ def main():
         # If 'run', fall through to mcp.run()
 
     # Default behavior: run the server
+    logger.info("Starting YASS-RAG MCP server")
+
     # Validate environment
     api_key = rag_config.gemini_api_key
 
     if not api_key:
-        print("Warning: GEMINI_API_KEY not set.")
-        print("Set it using: yass-rag config --key <YOUR_KEY>")
-        print("Or: export GEMINI_API_KEY='your-key'")
-        print("Get key: https://aistudio.google.com/apikey\n", file=sys.stderr)
+        logger.warning("GEMINI_API_KEY not set")
+        logger.info("Set it using: yass-rag config --key <YOUR_KEY>")
+        logger.info("Or: export GEMINI_API_KEY='your-key'")
+        logger.info("Get key: https://aistudio.google.com/apikey")
 
     if not DRIVE_API_AVAILABLE:
-        print("Note: Google Drive sync disabled (optional packages not installed).", file=sys.stderr)
-        print("Enable with: uv sync --extra drive", file=sys.stderr)
-
-    # Remove our arguments from sys.argv before passing to mcp.run() if needed,
-    # but FastMCP might not use argv if we call run().
-    # Actually FastMCP.run() uses uvicorn if transport is sse, or stdio otherwise.
-    # It might parse args for transport selection.
+        logger.info("Google Drive sync disabled (optional packages not installed)")
+        logger.info("Enable with: uv sync --extra drive")
 
     mcp.run()
 
