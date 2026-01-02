@@ -1,7 +1,7 @@
-
 """
 Google Drive Sync Tools.
 """
+
 import json
 import tempfile
 
@@ -16,7 +16,7 @@ from ..services.drive import (
     _parse_drive_folder_id,
 )
 from ..services.gemini import _get_gemini_client, _wait_for_operation
-from ..utils import _handle_error
+from ..utils import _handle_error, track_progress
 
 
 @mcp.tool(
@@ -26,8 +26,8 @@ from ..utils import _handle_error
         "readOnlyHint": False,
         "destructiveHint": False,
         "idempotentHint": False,
-        "openWorldHint": True
-    }
+        "openWorldHint": True,
+    },
 )
 async def sync_drive_folder(params: SyncDriveFolderInput) -> str:
     """Sync files from a Google Drive folder to a Gemini File Search store.
@@ -87,7 +87,9 @@ Setup options:
         # Parse extensions
         extensions = None
         if params.file_extensions:
-            extensions = {ext if ext.startswith('.') else f'.{ext}' for ext in params.file_extensions}
+            extensions = {
+                ext if ext.startswith(".") else f".{ext}" for ext in params.file_extensions
+            }
 
         # List files in Drive folder
         files = _list_drive_files(
@@ -95,7 +97,7 @@ Setup options:
             folder_id,
             recursive=params.recursive,
             max_files=params.max_files,
-            extensions=extensions
+            extensions=extensions,
         )
 
         if not files:
@@ -103,7 +105,7 @@ Setup options:
 
 No supported files found in folder `{folder_id}`.
 
-Supported extensions: {', '.join(sorted(SUPPORTED_EXTENSIONS))}
+Supported extensions: {", ".join(sorted(SUPPORTED_EXTENSIONS))}
 """
 
         # Create temp directory for downloads
@@ -111,11 +113,13 @@ Supported extensions: {', '.join(sorted(SUPPORTED_EXTENSIONS))}
         failed = []
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            for file_info in files:
-                file_name = file_info['name']
+            for file_info in track_progress(files, "Syncing files"):
+                file_name = file_info["name"]
 
-                # Download file
-                local_path = _download_drive_file(service, file_info, temp_dir)
+                # Download file with streaming (1MB chunks)
+                local_path = _download_drive_file(
+                    service, file_info, temp_dir, chunk_size=1024 * 1024
+                )
                 if not local_path:
                     failed.append({"name": file_name, "error": "Download failed"})
                     continue
@@ -125,31 +129,36 @@ Supported extensions: {', '.join(sorted(SUPPORTED_EXTENSIONS))}
                     operation = gemini_client.file_search_stores.upload_to_file_search_store(
                         file=local_path,
                         file_search_store_name=params.store_name,
-                        config={'display_name': file_name}
+                        config={"display_name": file_name},
                     )
 
                     # Wait for upload
                     operation = await _wait_for_operation(gemini_client, operation, max_attempts=30)
 
-                    uploaded.append({
-                        "name": file_name,
-                        "drive_id": file_info['id'],
-                        "status": "indexed" if operation.done else "processing"
-                    })
+                    uploaded.append(
+                        {
+                            "name": file_name,
+                            "drive_id": file_info["id"],
+                            "status": "indexed" if operation.done else "processing",
+                        }
+                    )
                 except Exception as e:
                     failed.append({"name": file_name, "error": str(e)})
 
         if params.response_format == ResponseFormat.JSON:
-            return json.dumps({
-                "success": True,
-                "store_name": params.store_name,
-                "folder_id": folder_id,
-                "files_found": len(files),
-                "files_uploaded": len(uploaded),
-                "files_failed": len(failed),
-                "uploaded": uploaded,
-                "failed": failed
-            }, indent=2)
+            return json.dumps(
+                {
+                    "success": True,
+                    "store_name": params.store_name,
+                    "folder_id": folder_id,
+                    "files_found": len(files),
+                    "files_uploaded": len(uploaded),
+                    "files_failed": len(failed),
+                    "uploaded": uploaded,
+                    "failed": failed,
+                },
+                indent=2,
+            )
 
         # Format markdown response
         lines = [
@@ -186,8 +195,8 @@ Supported extensions: {', '.join(sorted(SUPPORTED_EXTENSIONS))}
         "readOnlyHint": True,
         "destructiveHint": False,
         "idempotentHint": True,
-        "openWorldHint": True
-    }
+        "openWorldHint": True,
+    },
 )
 async def list_drive_files(params: ListDriveFilesInput) -> str:
     """List files in a Google Drive folder that can be indexed.
@@ -214,40 +223,40 @@ async def list_drive_files(params: ListDriveFilesInput) -> str:
         service = _get_drive_service(params.credentials_path)
 
         files = _list_drive_files(
-            service,
-            folder_id,
-            recursive=params.recursive,
-            max_files=params.max_files
+            service, folder_id, recursive=params.recursive, max_files=params.max_files
         )
 
         if params.response_format == ResponseFormat.JSON:
-            return json.dumps({
-                "success": True,
-                "folder_id": folder_id,
-                "count": len(files),
-                "files": [
-                    {
-                        "id": f['id'],
-                        "name": f['name'],
-                        "mime_type": f.get('mimeType'),
-                        "size": f.get('size'),
-                        "modified": f.get('modifiedTime')
-                    }
-                    for f in files
-                ]
-            }, indent=2)
+            return json.dumps(
+                {
+                    "success": True,
+                    "folder_id": folder_id,
+                    "count": len(files),
+                    "files": [
+                        {
+                            "id": f["id"],
+                            "name": f["name"],
+                            "mime_type": f.get("mimeType"),
+                            "size": f.get("size"),
+                            "modified": f.get("modifiedTime"),
+                        }
+                        for f in files
+                    ],
+                },
+                indent=2,
+            )
 
         if not files:
             return f"## Drive Folder Contents\n\nNo indexable files found in `{folder_id}`."
 
         lines = [
             f"## Drive Folder Contents ({len(files)} indexable files)",
-            f"**Folder ID**: `{folder_id}`\n"
+            f"**Folder ID**: `{folder_id}`\n",
         ]
 
         for f in files:
-            size = f.get('size', 'N/A')
-            if size != 'N/A':
+            size = f.get("size", "N/A")
+            if size != "N/A":
                 size = f"{int(size) / 1024:.1f} KB"
             lines.append(f"- **{f['name']}** ({size})")
 

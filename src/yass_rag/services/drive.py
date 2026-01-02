@@ -208,8 +208,20 @@ def _list_drive_files(
     return files[:max_files]
 
 
-def _download_drive_file(service, file_info: dict[str, Any], temp_dir: str) -> str | None:
-    """Download a file from Google Drive to a temp directory."""
+def _download_drive_file(
+    service, file_info: dict[str, Any], temp_dir: str, chunk_size: int = 1024 * 1024
+) -> str | None:
+    """Download a file from Google Drive to a temp directory.
+
+    Args:
+        service: Drive API service instance
+        file_info: File metadata dictionary
+        temp_dir: Temporary directory path
+        chunk_size: Download chunk size in bytes (default: 1MB)
+
+    Returns:
+        Local file path if successful, None otherwise
+    """
     file_id = file_info["id"]
     file_name = file_info["name"]
     mime_type = file_info.get("mimeType", "")
@@ -226,10 +238,12 @@ def _download_drive_file(service, file_info: dict[str, Any], temp_dir: str) -> s
         file_path = os.path.join(temp_dir, file_name)
 
         with io.FileIO(file_path, "wb") as fh:
-            downloader = MediaIoBaseDownload(fh, request)
+            downloader = MediaIoBaseDownload(fh, request, chunksize=chunk_size)
             done = False
             while not done:
-                _, done = downloader.next_chunk()
+                status, done = downloader.next_chunk()
+                if status:
+                    print(f"  Downloading {file_name}: {status.progress() * 100:.1f}%")
 
         return file_path
 

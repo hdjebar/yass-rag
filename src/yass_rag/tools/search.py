@@ -1,7 +1,7 @@
-
 """
 Search and Retrieval Tools.
 """
+
 import json
 
 from google.genai import types
@@ -19,8 +19,8 @@ from ..utils import _handle_error
         "readOnlyHint": True,
         "destructiveHint": False,
         "idempotentHint": True,
-        "openWorldHint": True
-    }
+        "openWorldHint": True,
+    },
 )
 async def search(params: SearchInput) -> str:
     """Search indexed documents and get AI-generated answers with citations."""
@@ -34,15 +34,15 @@ async def search(params: SearchInput) -> str:
         response = client.models.generate_content(
             model=params.model,
             contents=params.query,
-            config=types.GenerateContentConfig(tools=[file_search_tool])
+            config=types.GenerateContentConfig(tools=[file_search_tool]),
         )
 
-        answer = response.text if hasattr(response, 'text') else str(response)
+        answer = response.text if hasattr(response, "text") else str(response)
 
         grounding_metadata = None
-        if hasattr(response, 'candidates') and response.candidates:
+        if hasattr(response, "candidates") and response.candidates:
             candidate = response.candidates[0]
-            if hasattr(candidate, 'grounding_metadata'):
+            if hasattr(candidate, "grounding_metadata"):
                 grounding_metadata = candidate.grounding_metadata
 
         if params.response_format == ResponseFormat.JSON:
@@ -80,44 +80,53 @@ async def search(params: SearchInput) -> str:
         "readOnlyHint": True,
         "destructiveHint": False,
         "idempotentHint": True,
-        "openWorldHint": True
-    }
+        "openWorldHint": True,
+    },
 )
 async def list_files(params: ListFilesInput) -> str:
     """List all files indexed in a File Search store."""
     try:
         client = _get_gemini_client()
-        files = list(client.file_search_stores.list_files(
-            name=params.store_name,
-            config={'page_size': params.limit}
-        ))
+        files = list(
+            client.file_search_stores.list_files(
+                name=params.store_name, config={"page_size": params.limit}
+            )
+        )
 
         if params.response_format == ResponseFormat.JSON:
-            return json.dumps({
-                "success": True,
-                "store_name": params.store_name,
-                "count": len(files),
-                "files": [
-                    {
-                        "name": getattr(f, 'name', 'Unknown'),
-                        "display_name": getattr(f, 'display_name', None),
-                        "state": str(getattr(f, 'state', 'UNKNOWN')),
-                    }
-                    for f in files
-                ]
-            }, indent=2)
+            return json.dumps(
+                {
+                    "success": True,
+                    "store_name": params.store_name,
+                    "count": len(files),
+                    "files": [
+                        {
+                            "name": getattr(f, "name", "Unknown"),
+                            "display_name": getattr(f, "display_name", None),
+                            "state": str(getattr(f, "state", "UNKNOWN")),
+                        }
+                        for f in files
+                    ],
+                },
+                indent=2,
+            )
 
         if not files:
             return f"## Files in Store\n\n**Store**: `{params.store_name}`\n\nNo files found."
 
         lines = [f"## Files in Store ({len(files)} found)", f"**Store**: `{params.store_name}`\n"]
         for f in files:
-            display = getattr(f, 'display_name', 'N/A')
+            display = getattr(f, "display_name", "N/A")
             lines.append(f"- **{display}** (`{getattr(f, 'name', 'Unknown')}`)")
 
         return "\n".join(lines)
     except AttributeError:
-        return "## Files in Store\n\n*File listing not available in current API version.*"
+        return """## Feature Not Available
+
+The 'list_files' function is not available in your current Gemini API version.
+
+**Workaround:** Use the `search` function to verify your documents are indexed.
+"""
     except Exception as e:
         return _handle_error(e)
 
@@ -129,19 +138,23 @@ async def list_files(params: ListFilesInput) -> str:
         "readOnlyHint": False,
         "destructiveHint": True,
         "idempotentHint": False,
-        "openWorldHint": True
-    }
+        "openWorldHint": True,
+    },
 )
 async def delete_file(params: DeleteFileInput) -> str:
     """Remove a file from a File Search store."""
     try:
         client = _get_gemini_client()
         client.file_search_stores.delete_file(
-            store_name=params.store_name,
-            file_name=params.file_name
+            store_name=params.store_name, file_name=params.file_name
         )
         return f"## File Deleted\n\n`{params.file_name}` removed from store."
     except AttributeError:
-        return "Error: File deletion not available in current API version."
+        return """## Feature Not Available
+
+The 'delete_file' function is not available in your current Gemini API version.
+
+**Note:** File management features may be limited in API v1.0
+"""
     except Exception as e:
         return _handle_error(e)
