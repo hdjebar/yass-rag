@@ -6,12 +6,11 @@ import argparse
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 from .config import rag_config
 from .server import mcp
-from typing import Any
-
-# Import tools to ensure they are registered with the server
+from .services.drive import DRIVE_API_AVAILABLE
 
 
 def config_command(args: Any) -> None:
@@ -50,10 +49,48 @@ def config_command(args: Any) -> None:
     print("Use --key <YOUR_KEY> to set the Gemini API key.")
 
 
+def health_command(args: Any) -> None:
+    """Handle health check command."""
+    from .services.gemini import _get_gemini_client
+
+    print("## YASS-RAG Health Check\n")
+
+    # Check API key
+    try:
+        api_key = rag_config.gemini_api_key
+        if api_key:
+            print("✅ Gemini API Key: Configured")
+        else:
+            print("❌ Gemini API Key: Not configured")
+            sys.exit(1)
+    except Exception as e:
+        print(f"❌ Gemini API Key: Error - {e}")
+        sys.exit(1)
+
+    # Test API connection
+    try:
+        _get_gemini_client()
+        print("✅ Gemini API: Connected")
+    except Exception as e:
+        print(f"❌ Gemini API: Connection failed - {e}")
+        sys.exit(1)
+
+    # Check Drive
+    if DRIVE_API_AVAILABLE:
+        print("✅ Google Drive: Available")
+    else:
+        print("⚠️  Google Drive: Not installed (optional)")
+
+    print("\n**All checks passed!**")
+
+
 def main() -> None:
     """Main entry point for the MCP server."""
     parser = argparse.ArgumentParser(description="YASS-RAG: Yet Another Simple & Smart RAG")
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
+
+    # Health command
+    subparsers.add_parser("health", help="Check system health")
 
     # Run command (default)
     subparsers.add_parser("run", help="Run the MCP server")
@@ -62,6 +99,17 @@ def main() -> None:
     cfg_parser = subparsers.add_parser("config", help="Configure YASS-RAG")
     cfg_parser.add_argument("--key", help="Set the Gemini API Key")
     cfg_parser.add_argument("--show", action="store_true", help="Show current configuration")
+
+    # Check if a subcommand was provided
+    if len(sys.argv) > 1 and sys.argv[1] in ["health", "config", "run"]:
+        args = parser.parse_args()
+        if args.command == "config":
+            config_command(args)
+            return
+        elif args.command == "health":
+            health_command(args)
+            return
+        # If 'run', fall through to mcp.run()
 
     # If no arguments, mimic FastMCP behavior (which normally takes over sys.argv)
     # But since we want to support 'yass-rag run' vs 'yass-rag', we need to be careful.
