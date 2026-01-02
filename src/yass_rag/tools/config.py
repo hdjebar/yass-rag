@@ -1,12 +1,19 @@
-
 """
 RAG Configuration Tools.
 """
+
 import json
 
 from ..config import rag_config
 from ..models.api import ConfigureRAGInput, GetRAGConfigInput, ResetRAGConfigInput, ResponseFormat
+from ..security import delete_token
 from ..server import mcp
+from ..services.drive import (
+    DRIVE_API_AVAILABLE,
+    _get_drive_service,
+    _list_drive_files,
+    _parse_drive_folder_id,
+)
 from ..services.gemini import _get_gemini_client
 from ..utils import _handle_error
 
@@ -18,8 +25,8 @@ from ..utils import _handle_error
         "readOnlyHint": False,
         "destructiveHint": False,
         "idempotentHint": True,
-        "openWorldHint": False
-    }
+        "openWorldHint": False,
+    },
 )
 async def configure_rag(params: ConfigureRAGInput) -> str:
     """Configure RAG pipeline settings.
@@ -42,14 +49,15 @@ async def configure_rag(params: ConfigureRAGInput) -> str:
         str: Updated configuration summary
     """
     try:
-        updates = {}
+        with rag_config.transaction():
+            updates = {}
 
-        # Apply all non-None values
-        for field_name, field_value in params.model_dump().items():
-            if field_value is not None:
-                if hasattr(rag_config, field_name):
-                    setattr(rag_config, field_name, field_value)
-                    updates[field_name] = field_value
+            # Apply all non-None values
+            for field_name, field_value in params.model_dump().items():
+                if field_value is not None:
+                    if hasattr(rag_config, field_name):
+                        setattr(rag_config, field_name, field_value)
+                        updates[field_name] = field_value
 
         if not updates:
             return "## No Changes\n\nNo configuration values provided. Use `get_rag_config` to view current settings."
@@ -59,7 +67,7 @@ async def configure_rag(params: ConfigureRAGInput) -> str:
 
         for key, value in updates.items():
             # Mask sensitive values
-            if 'key' in key.lower() or 'secret' in key.lower() or 'password' in key.lower():
+            if "key" in key.lower() or "secret" in key.lower() or "password" in key.lower():
                 display_value = "***" + str(value)[-4:] if value else "None"
             elif isinstance(value, str) and len(value) > 50:
                 display_value = value[:50] + "..."
@@ -83,8 +91,8 @@ async def configure_rag(params: ConfigureRAGInput) -> str:
         "readOnlyHint": True,
         "destructiveHint": False,
         "idempotentHint": True,
-        "openWorldHint": False
-    }
+        "openWorldHint": False,
+    },
 )
 async def get_rag_config(params: GetRAGConfigInput) -> str:
     """Get current RAG configuration settings.
@@ -112,10 +120,28 @@ async def get_rag_config(params: GetRAGConfigInput) -> str:
         groups = {
             "API Configuration": ["gemini_api_key", "google_credentials_path", "google_oauth_path"],
             "Model Settings": ["model", "temperature", "max_output_tokens", "top_p", "top_k"],
-            "Polling & Async": ["poll_interval_seconds", "max_poll_attempts", "async_uploads", "batch_size", "concurrent_uploads"],
-            "Google Drive": ["default_drive_folder", "drive_recursive", "drive_max_files", "drive_file_extensions", "auto_sync_enabled", "sync_interval_minutes"],
+            "Polling & Async": [
+                "poll_interval_seconds",
+                "max_poll_attempts",
+                "async_uploads",
+                "batch_size",
+                "concurrent_uploads",
+            ],
+            "Google Drive": [
+                "default_drive_folder",
+                "drive_recursive",
+                "drive_max_files",
+                "drive_file_extensions",
+                "auto_sync_enabled",
+                "sync_interval_minutes",
+            ],
             "Project/Store": ["project_store", "default_stores", "auto_create_store"],
-            "Retrieval": ["max_chunks", "min_relevance_score", "include_metadata", "chunk_overlap_context"],
+            "Retrieval": [
+                "max_chunks",
+                "min_relevance_score",
+                "include_metadata",
+                "chunk_overlap_context",
+            ],
             "Response": ["include_citations", "citation_style", "response_format", "system_prompt"],
             "File Filtering": ["supported_extensions", "max_file_size_mb", "skip_hidden_files"],
         }
@@ -146,8 +172,8 @@ async def get_rag_config(params: GetRAGConfigInput) -> str:
         "readOnlyHint": False,
         "destructiveHint": True,
         "idempotentHint": True,
-        "openWorldHint": False
-    }
+        "openWorldHint": False,
+    },
 )
 async def reset_rag_config(params: ResetRAGConfigInput) -> str:
     """Reset RAG configuration to default values.
@@ -172,7 +198,7 @@ This will reset all RAG settings to defaults.
 Set `preserve_api_keys=false` to also clear API credentials.
 """
 
-        # Optionally save API keys
+        # Optionally save API keys and delete OAuth tokens
         saved_keys = {}
         if params.preserve_api_keys:
             saved_keys = {
@@ -180,6 +206,9 @@ Set `preserve_api_keys=false` to also clear API credentials.
                 "google_credentials_path": rag_config.google_credentials_path,
                 "google_oauth_path": rag_config.google_oauth_path,
             }
+        else:
+            # Delete OAuth tokens from keyring
+            delete_token("drive_oauth")
 
         # Reset
         rag_config.reset_to_defaults()
@@ -212,14 +241,14 @@ Use `configure_rag` to customize settings.
         "readOnlyHint": False,
         "destructiveHint": False,
         "idempotentHint": False,
-        "openWorldHint": True
-    }
+        "openWorldHint": True,
+    },
 )
 async def quick_setup(
     gemini_api_key: str | None = None,
     drive_folder: str | None = None,
     project_name: str | None = None,
-    model: str = "gemini-2.5-flash"
+    model: str = "gemini-2.5-flash",
 ) -> str:
     """Quick setup for RAG pipeline with minimal configuration.
 
@@ -261,16 +290,42 @@ Get your key: https://aistudio.google.com/apikey
         # 3. Create store
         project_name = project_name or "My RAG Project"
         client = _get_gemini_client()
-        store = client.file_search_stores.create(config={'display_name': project_name})
+        store = client.file_search_stores.create(config={"display_name": project_name})
         rag_config.project_store = store.name
         rag_config.default_stores = [store.name]
         results.append(f"✅ Created store: `{store.name}`")
 
-        # 4. Optionally sync Drive folder
+        # 4. Optionally validate and sync Drive folder
         if drive_folder:
-            rag_config.default_drive_folder = drive_folder
-            results.append(f"✅ Drive folder configured: `{drive_folder}`")
-            results.append("   → Run `sync_drive_folder` to index files")
+            if not DRIVE_API_AVAILABLE:
+                results.append(
+                    "⚠️  Google Drive API not installed. Skipping folder validation. "
+                    "Install with: uv sync --extra drive"
+                )
+                rag_config.default_drive_folder = drive_folder
+                results.append(f"✅ Drive folder configured: `{drive_folder}`")
+            else:
+                try:
+                    folder_id = _parse_drive_folder_id(drive_folder)
+                    service = _get_drive_service()
+                    # Quick check if folder is accessible
+                    _list_drive_files(service, folder_id, recursive=False, max_files=1)
+                    rag_config.default_drive_folder = drive_folder
+                    results.append(f"✅ Drive folder verified: `{drive_folder}`")
+                except Exception as e:
+                    return f"""## Setup Failed
+
+Cannot access Google Drive folder: `{drive_folder}`
+
+**Error:** {str(e)}
+
+**Action:**
+1. Verify folder ID/URL is correct
+2. Check that credentials are properly configured
+3. Ensure folder is shared with your service account (if using service account)
+
+Get key: https://aistudio.google.com/apikey
+"""
 
         # Build response
         lines = [
