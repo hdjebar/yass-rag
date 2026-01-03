@@ -9,7 +9,7 @@ import tempfile
 from ..models.api import ResponseFormat, UploadFileInput, UploadTextInput
 from ..server import mcp
 from ..services.gemini import _get_gemini_client, _wait_for_operation
-from ..utils import _handle_error, tool_handler
+from ..utils import tool_handler
 
 
 @tool_handler

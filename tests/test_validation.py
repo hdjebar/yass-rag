@@ -64,7 +64,7 @@ def test_search_input_validation():
     SearchInput(store_names=["fileSearchStores/abc123"], query="test query")
 
     # Invalid store name
-    with pytest.raises(ValidationError, match="Invalid store names"):
+    with pytest.raises(ValidationError, match="Invalid store name"):
         SearchInput(store_names=["invalid-store"], query="test query")
 
 

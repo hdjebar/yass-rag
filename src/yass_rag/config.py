@@ -191,8 +191,15 @@ class RAGConfig:
         with self._lock:
             version = config.get("_version", "0.0")
 
+            # Parse version for proper comparison (handles "1.10" > "1.9" correctly)
+            def parse_version(v: str) -> tuple[int, ...]:
+                try:
+                    return tuple(int(x) for x in v.split("."))
+                except (ValueError, AttributeError):
+                    return (0, 0)
+
             # Version migration logic
-            if version < "1.0":
+            if parse_version(version) < parse_version("1.0"):
                 # Migrate from old format if needed
                 if "old_field" in config:
                     config["new_field"] = config.pop("old_field")

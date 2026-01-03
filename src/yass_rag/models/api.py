@@ -5,6 +5,37 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 DEFAULT_MODEL = "gemini-2.5-flash"
 
+# Valid patterns for Google Drive folder URLs
+_DRIVE_URL_PATTERNS = [
+    r"https?://drive\.google\.com/drive/folders/[a-zA-Z0-9_-]+",
+    r"https?://drive\.google\.com/drive/u/\d+/folders/[a-zA-Z0-9_-]+",
+]
+
+
+def _validate_store_name(v: str) -> str:
+    """Validate store name format."""
+    if not v.startswith("fileSearchStores/"):
+        raise ValueError(f"Invalid store name '{v}'. Must start with 'fileSearchStores/'")
+    return v
+
+
+def _validate_drive_folder_url(v: str) -> str:
+    """Validate Google Drive folder URL or ID."""
+    v = v.strip()
+
+    # Allow just folder ID
+    if re.match(r"^[a-zA-Z0-9_-]+$", v):
+        return v
+
+    # Validate URL format
+    if "drive.google.com" not in v:
+        raise ValueError("Invalid Google Drive URL")
+
+    if not any(re.match(p, v) for p in _DRIVE_URL_PATTERNS):
+        raise ValueError("Invalid Google Drive folder URL format")
+
+    return v
+
 
 class ResponseFormat(str, Enum):
     """Output format for tool responses."""
@@ -46,13 +77,7 @@ class GetStoreInput(BaseModel):
     store_name: str = Field(..., min_length=1)
     response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
 
-    @field_validator("store_name")
-    @classmethod
-    def validate_store_format(cls, v: str) -> str:
-        """Validate store name format."""
-        if not v.startswith("fileSearchStores/"):
-            raise ValueError(f"Invalid store name '{v}'. Must start with 'fileSearchStores/'")
-        return v
+    _validate_store = field_validator("store_name")(_validate_store_name)
 
 
 class DeleteStoreInput(BaseModel):
@@ -62,13 +87,7 @@ class DeleteStoreInput(BaseModel):
 
     store_name: str = Field(..., min_length=1)
 
-    @field_validator("store_name")
-    @classmethod
-    def validate_store_format(cls, v: str) -> str:
-        """Validate store name format."""
-        if not v.startswith("fileSearchStores/"):
-            raise ValueError(f"Invalid store name '{v}'. Must start with 'fileSearchStores/'")
-        return v
+    _validate_store = field_validator("store_name")(_validate_store_name)
 
 
 class UploadFileInput(BaseModel):
@@ -82,13 +101,7 @@ class UploadFileInput(BaseModel):
     wait_for_completion: bool = Field(default=True)
     response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
 
-    @field_validator("store_name")
-    @classmethod
-    def validate_store_format(cls, v: str) -> str:
-        """Validate store name format."""
-        if not v.startswith("fileSearchStores/"):
-            raise ValueError(f"Invalid store name '{v}'. Must start with 'fileSearchStores/'")
-        return v
+    _validate_store = field_validator("store_name")(_validate_store_name)
 
 
 class UploadTextInput(BaseModel):
@@ -102,13 +115,7 @@ class UploadTextInput(BaseModel):
     wait_for_completion: bool = Field(default=True)
     response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
 
-    @field_validator("store_name")
-    @classmethod
-    def validate_store_format(cls, v: str) -> str:
-        """Validate store name format."""
-        if not v.startswith("fileSearchStores/"):
-            raise ValueError(f"Invalid store name '{v}'. Must start with 'fileSearchStores/'")
-        return v
+    _validate_store = field_validator("store_name")(_validate_store_name)
 
 
 class SearchInput(BaseModel):
@@ -126,12 +133,8 @@ class SearchInput(BaseModel):
     @classmethod
     def validate_store_formats(cls, v: list[str]) -> list[str]:
         """Validate all store name formats."""
-        invalid = [name for name in v if not name.startswith("fileSearchStores/")]
-        if invalid:
-            raise ValueError(
-                f"Invalid store names: {', '.join(invalid)}. "
-                "All store names must start with 'fileSearchStores/'"
-            )
+        for name in v:
+            _validate_store_name(name)
         return v
 
 
@@ -144,13 +147,7 @@ class ListFilesInput(BaseModel):
     limit: int | None = Field(default=20, ge=1, le=100)
     response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
 
-    @field_validator("store_name")
-    @classmethod
-    def validate_store_format(cls, v: str) -> str:
-        """Validate store name format."""
-        if not v.startswith("fileSearchStores/"):
-            raise ValueError(f"Invalid store name '{v}'. Must start with 'fileSearchStores/'")
-        return v
+    _validate_store = field_validator("store_name")(_validate_store_name)
 
 
 class DeleteFileInput(BaseModel):
@@ -161,13 +158,7 @@ class DeleteFileInput(BaseModel):
     store_name: str = Field(..., min_length=1)
     file_name: str = Field(..., min_length=1)
 
-    @field_validator("store_name")
-    @classmethod
-    def validate_store_format(cls, v: str) -> str:
-        """Validate store name format."""
-        if not v.startswith("fileSearchStores/"):
-            raise ValueError(f"Invalid store name '{v}'. Must start with 'fileSearchStores/'")
-        return v
+    _validate_store = field_validator("store_name")(_validate_store_name)
 
 
 # Google Drive Sync Models
@@ -203,37 +194,8 @@ class SyncDriveFolderInput(BaseModel):
     )
     response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
 
-    @field_validator("store_name")
-    @classmethod
-    def validate_store_format(cls, v: str) -> str:
-        """Validate store name format."""
-        if not v.startswith("fileSearchStores/"):
-            raise ValueError(f"Invalid store name '{v}'. Must start with 'fileSearchStores/'")
-        return v
-
-    @field_validator("folder")
-    @classmethod
-    def validate_drive_folder(cls, v: str) -> str:
-        """Validate Google Drive folder URL or ID."""
-        v = v.strip()
-
-        # Allow just folder ID
-        if re.match(r"^[a-zA-Z0-9_-]+$", v):
-            return v
-
-        # Validate URL format
-        if "drive.google.com" not in v:
-            raise ValueError("Invalid Google Drive URL")
-
-        valid_patterns = [
-            r"https?://drive\.google\.com/drive/folders/[a-zA-Z0-9_-]+",
-            r"https?://drive\.google\.com/drive/u/\d+/folders/[a-zA-Z0-9_-]+",
-        ]
-
-        if not any(re.match(p, v) for p in valid_patterns):
-            raise ValueError("Invalid Google Drive folder URL format")
-
-        return v
+    _validate_store = field_validator("store_name")(_validate_store_name)
+    _validate_folder = field_validator("folder")(_validate_drive_folder_url)
 
 
 class ListDriveFilesInput(BaseModel):
@@ -251,29 +213,7 @@ class ListDriveFilesInput(BaseModel):
     credentials_path: str | None = Field(default=None)
     response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
 
-    @field_validator("folder")
-    @classmethod
-    def validate_drive_folder(cls, v: str) -> str:
-        """Validate Google Drive folder URL or ID."""
-        v = v.strip()
-
-        # Allow just folder ID
-        if re.match(r"^[a-zA-Z0-9_-]+$", v):
-            return v
-
-        # Validate URL format
-        if "drive.google.com" not in v:
-            raise ValueError("Invalid Google Drive URL")
-
-        valid_patterns = [
-            r"https?://drive\.google\.com/drive/folders/[a-zA-Z0-9_-]+",
-            r"https?://drive\.google\.com/drive/u/\d+/folders/[a-zA-Z0-9_-]+",
-        ]
-
-        if not any(re.match(p, v) for p in valid_patterns):
-            raise ValueError("Invalid Google Drive folder URL format")
-
-        return v
+    _validate_folder = field_validator("folder")(_validate_drive_folder_url)
 
 
 # RAG Configuration Models

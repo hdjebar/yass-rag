@@ -13,7 +13,7 @@ from ..models.api import (
 )
 from ..server import mcp
 from ..services.gemini import _format_store_json, _format_store_markdown, _get_gemini_client
-from ..utils import _handle_error, tool_handler
+from ..utils import tool_handler
 
 
 @tool_handler

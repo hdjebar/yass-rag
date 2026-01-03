@@ -15,7 +15,7 @@ from ..services.drive import (
     _parse_drive_folder_id,
 )
 from ..services.gemini import _get_gemini_client
-from ..utils import _handle_error, tool_handler
+from ..utils import tool_handler
 
 
 @tool_handler

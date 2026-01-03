@@ -9,8 +9,8 @@ from unittest.mock import Mock, AsyncMock, patch
 
 import pytest
 
-# Set test environment variables before importing
-os.environ["GEMINI_API_KEY"] = "test-key-12345678"
+# Store original env value to restore after tests
+_ORIGINAL_GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 
 def pytest_configure(config):
@@ -19,6 +19,18 @@ def pytest_configure(config):
 
     # Set MCP mode flag to disable progress bars
     sys._mcp_mode = True
+
+    # Set test API key
+    os.environ["GEMINI_API_KEY"] = "test-key-12345678"
+
+
+def pytest_unconfigure(config):
+    """Clean up after all tests."""
+    # Restore original env value
+    if _ORIGINAL_GEMINI_API_KEY is not None:
+        os.environ["GEMINI_API_KEY"] = _ORIGINAL_GEMINI_API_KEY
+    elif "GEMINI_API_KEY" in os.environ:
+        del os.environ["GEMINI_API_KEY"]
 
 
 @pytest.fixture

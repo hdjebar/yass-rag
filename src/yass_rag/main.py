@@ -100,32 +100,18 @@ def main() -> None:
     cfg_parser.add_argument("--key", help="Set the Gemini API Key")
     cfg_parser.add_argument("--show", action="store_true", help="Show current configuration")
 
-    # Check if a subcommand was provided
-    if len(sys.argv) > 1 and sys.argv[1] in ["health", "config", "run"]:
-        args = parser.parse_args()
-        if args.command == "config":
-            config_command(args)
-            return
-        elif args.command == "health":
-            health_command(args)
-            return
-        # If 'run', fall through to mcp.run()
+    # Parse arguments
+    args = parser.parse_args()
 
-    # If no arguments, mimic FastMCP behavior (which normally takes over sys.argv)
-    # But since we want to support 'yass-rag run' vs 'yass-rag', we need to be careful.
-    # FastMCP uses click/typer internally or looks at sys.argv?
-    # Actually mcp.run() usually blocks and handles stdin/stdout.
-    # If we invoke it with 'yass-rag', we want to default to run.
+    # Handle subcommands
+    if args.command == "config":
+        config_command(args)
+        return
+    elif args.command == "health":
+        health_command(args)
+        return
 
-    # Check if a subcommand was provided
-    if len(sys.argv) > 1 and sys.argv[1] in ["config", "run"]:
-        args = parser.parse_args()
-        if args.command == "config":
-            config_command(args)
-            return
-        # If 'run', fall through to mcp.run()
-
-    # Default behavior: run the server
+    # Default behavior: run the server (covers both 'run' command and no command)
     # Validate environment
     api_key = rag_config.gemini_api_key
 

@@ -5,18 +5,18 @@ Google Drive Sync Tools.
 import json
 import tempfile
 
+from ..config import SUPPORTED_EXTENSIONS
 from ..models.api import ListDriveFilesInput, ResponseFormat, SyncDriveFolderInput
 from ..server import mcp
 from ..services.drive import (
     DRIVE_API_AVAILABLE,
-    SUPPORTED_EXTENSIONS,
     _download_drive_file,
     _get_drive_service,
     _list_drive_files,
     _parse_drive_folder_id,
 )
 from ..services.gemini import _get_gemini_client, _wait_for_operation
-from ..utils import _handle_error, tool_handler, track_progress
+from ..utils import tool_handler, track_progress
 
 
 @tool_handler
