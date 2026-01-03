@@ -9,9 +9,10 @@ from google.genai import types
 from ..models.api import DeleteFileInput, ListFilesInput, ResponseFormat, SearchInput
 from ..server import mcp
 from ..services.gemini import _format_citations_json, _format_citations_markdown, _get_gemini_client
-from ..utils import _handle_error
+from ..utils import _handle_error, tool_handler
 
 
+@tool_handler
 @mcp.tool(
     name="search",
     annotations={
@@ -24,55 +25,53 @@ from ..utils import _handle_error
 )
 async def search(params: SearchInput) -> str:
     """Search indexed documents and get AI-generated answers with citations."""
-    try:
-        client = _get_gemini_client()
+    client = _get_gemini_client()
 
-        file_search_tool = types.Tool(
-            file_search=types.FileSearch(file_search_store_names=params.store_names)
-        )
+    file_search_tool = types.Tool(
+        file_search=types.FileSearch(file_search_store_names=params.store_names)
+    )
 
-        response = client.models.generate_content(
-            model=params.model,
-            contents=params.query,
-            config=types.GenerateContentConfig(tools=[file_search_tool]),
-        )
+    response = client.models.generate_content(
+        model=params.model,
+        contents=params.query,
+        config=types.GenerateContentConfig(tools=[file_search_tool]),
+    )
 
-        answer = response.text if hasattr(response, "text") else str(response)
+    answer = response.text if hasattr(response, "text") else str(response)
 
-        grounding_metadata = None
-        if hasattr(response, "candidates") and response.candidates:
-            candidate = response.candidates[0]
-            if hasattr(candidate, "grounding_metadata"):
-                grounding_metadata = candidate.grounding_metadata
+    grounding_metadata = None
+    if hasattr(response, "candidates") and response.candidates:
+        candidate = response.candidates[0]
+        if hasattr(candidate, "grounding_metadata"):
+            grounding_metadata = candidate.grounding_metadata
 
-        if params.response_format == ResponseFormat.JSON:
-            result = {
-                "success": True,
-                "query": params.query,
-                "answer": answer,
-                "model": params.model,
-            }
-            if params.include_citations:
-                result["citations"] = _format_citations_json(grounding_metadata)
-            return json.dumps(result, indent=2)
-
-        lines = [
-            "## Search Results",
-            f"**Query**: {params.query}\n",
-            "### Answer",
-            answer,
-        ]
-
+    if params.response_format == ResponseFormat.JSON:
+        result = {
+            "success": True,
+            "query": params.query,
+            "answer": answer,
+            "model": params.model,
+        }
         if params.include_citations:
-            citations = _format_citations_markdown(grounding_metadata)
-            if citations:
-                lines.append(citations)
+            result["citations"] = _format_citations_json(grounding_metadata)
+        return json.dumps(result, indent=2)
 
-        return "\n".join(lines)
-    except Exception as e:
-        return _handle_error(e)
+    lines = [
+        "## Search Results",
+        f"**Query**: {params.query}\n",
+        "### Answer",
+        answer,
+    ]
+
+    if params.include_citations:
+        citations = _format_citations_markdown(grounding_metadata)
+        if citations:
+            lines.append(citations)
+
+    return "\n".join(lines)
 
 
+@tool_handler
 @mcp.tool(
     name="list_files",
     annotations={
@@ -127,10 +126,9 @@ The 'list_files' function is not available in your current Gemini API version.
 
 **Workaround:** Use the `search` function to verify your documents are indexed.
 """
-    except Exception as e:
-        return _handle_error(e)
 
 
+@tool_handler
 @mcp.tool(
     name="delete_file",
     annotations={
@@ -156,5 +154,3 @@ The 'delete_file' function is not available in your current Gemini API version.
 
 **Note:** File management features may be limited in API v1.0
 """
-    except Exception as e:
-        return _handle_error(e)
