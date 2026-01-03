@@ -154,6 +154,7 @@ class RateLimiter:
             with self.lock:
                 now = time.time()
                 elapsed = now - self.last_check
+                self.last_check = now
                 self.allowance += elapsed * (self.rate / self.per)
 
                 if self.allowance > self.rate:
@@ -163,10 +164,9 @@ class RateLimiter:
                     sleep_time = (1.0 - self.allowance) * (self.per / self.rate)
                     time.sleep(sleep_time)
                     self.allowance = 0.0
+                    self.last_check = time.time()  # Update after sleep
                 else:
                     self.allowance -= 1.0
-
-                self.last_check = now
 
             return func(*args, **kwargs)
 

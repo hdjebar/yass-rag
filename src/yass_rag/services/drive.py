@@ -3,6 +3,7 @@ Google Drive API service helpers.
 """
 
 import io
+import json
 import os
 import re
 import threading
@@ -88,7 +89,7 @@ def _get_drive_credentials(credentials_path: str | None = None):
     token_json = retrieve_token("drive_oauth")
     if token_json:
         try:
-            creds = Credentials.from_authorized_user_info(eval(token_json), DRIVE_SCOPES)
+            creds = Credentials.from_authorized_user_info(json.loads(token_json), DRIVE_SCOPES)
         except Exception:
             pass
 
